@@ -1,0 +1,180 @@
+---
+title: "Final Assignment, Section 1 - Task 4"
+author: "Arash Heidarzadeh Naeini u3236906"
+date: "2025-05-05"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(knitr)
+```
+
+## Introduction
+
+This report presents the design and implementation of a handcrafted dashboard that visualizes the trends and key figures of the different COVID-19 waves that occurred worldwide during the pandemic. The dashboard was designed to provide clear, accessible insights for a public audience, focusing on the most critical information while maintaining visual clarity.
+
+```{r dashboard-embed, eval=knitr::is_html_output(), results='asis', echo=FALSE}
+cat('<embed src="Dashboard.pdf" type="application/pdf" width="100%" height="600px" />')
+```
+
+## 1. Data Augmentation
+The current dataset only covers the first wave of COVID-19 (until May 5, 2020). To provide a comprehensive view of the subsequent waves, I would augment this dataset with additional sources and variables to capture the full evolution of the pandemic.
+
+### Additional Data Sources
+To extend our analysis beyond the first wave, I would incorporate data from:
+
+Johns Hopkins University CSSE COVID-19 Repository: This would provide daily updated global case, death, and recovery data throughout the entire pandemic period.
+Our World in Data COVID-19 Dataset: This source offers extensive testing data, vaccination rates, and hospitalization figures that became crucial metrics after the first wave.
+WHO Coronavirus Dashboard: This would provide official reporting from countries and standardized international metrics, ensuring data consistency.
+Government Health Department Databases: National and regional health departments offer detailed local data on hospital capacity and demographic breakdowns.
+GISAID and Nextstrain Data: These sources would provide variant tracking information to monitor the emergence and spread of different COVID-19 variants (Alpha, Delta, Omicron) that characterized subsequent waves.
+
+### New Variables to Include
+To better understand the pandemic's progression across multiple waves, I would add:
+
+Vaccination Metrics: Including first dose, fully vaccinated, and booster rates by country and region.
+Hospitalization Data: ICU occupancy rates and general hospital admissions to measure healthcare system burden.
+Variant Prevalence: Proportion of cases attributed to specific variants over time.
+Policy Stringency Indices: Measurements of lockdowns, mask mandates, and other interventions.
+Reinfection Rates: Data on subsequent infections, especially important in later waves.
+Age and Demographic Distribution: Changes in affected populations across different waves.
+
+By integrating these additional data sources and variables, the dashboard would evolve from showing just the first wave to comprehensively visualizing the entire pandemic trajectory, enabling comparison between waves and deeper understanding of pandemic dynamics.
+
+## 2. Key Insights
+The dashboard highlights several critical insights about the COVID-19 pandemic through carefully selected visualizations that communicate complex data in an accessible format.
+
+### Epicurve Timeline
+The centerpiece of the dashboard is the Epicurve Timeline, a line graph displaying cases, deaths, and recoveries across all waves. This visualization is crucial because:
+
+It provides an immediate visual understanding of the pandemic's progression
+It shows the relative severity of each wave by height of peaks
+It demonstrates the relationship between cases, deaths, and recoveries
+It allows for identification of pattern changes across waves
+It contextualizes the current situation within the historical progression
+
+The line graph format was chosen specifically because it effectively displays time-series data and shows trends over time. Using different colors for each metric (blue for cases, red for deaths, purple for recoveries) creates immediate visual distinction.
+
+### Geographical Spread Heatmap
+The geographical heatmap visualizes the spatial distribution of COVID-19 cases worldwide, with color intensity indicating case concentration. This visualization is important because:
+
+It highlights regional disparities in case numbers
+It reveals geographic patterns of spread
+It shows how the pandemic affected different parts of the world at different times
+It helps identify global hotspots requiring intervention
+It contextualizes local situations within the global picture
+
+The heatmap format was selected because it intuitively communicates intensity gradients across regions, making geographic patterns immediately apparent.
+
+### Detailed Data Table
+The data table provides specific metrics for the top 10 countries by case numbers. This component is essential because:
+
+It offers precise figures for the most affected nations
+It allows for direct country-to-country comparisons
+It provides multiple metrics (cases, deaths, recoveries, active cases, fatality rate) in one view
+It complements the visualizations with exact numbers
+It supports data-driven decision making by policymakers and public health officials
+
+The tabular format was chosen for its clarity in presenting multiple metrics across different countries in a structured, easy-to-reference format.
+
+## 3. Design Elements
+The dashboard's design was carefully considered to maximize information clarity while maintaining visual appeal and accessibility.
+
+### Layout Organization
+The dashboard follows a logical information hierarchy:
+
+Top Banner: Contains the dashboard title (in black), key statistics (total cases in light blue, deaths in red, and recoveries in blue), date range selector, and wave toggle buttons (Wave 1 in purple, Wave 2 in blue). This provides immediate context and control.
+Main Visualization Area: Divided into two primary visualizations:
+
+Left: Epicurve timeline showing pandemic progression with color-coded lines (blue for cases, red for deaths, purple for recoveries)
+Right: Geographical heatmap showing spatial distribution with blue continental outlines and red gradient intensity
+
+
+Bottom Section: Features the detailed data table of top 10 countries (with headers in black and data in blue). This provides specific data points for reference.
+
+This layout prioritizes the most critical information at the top and follows a natural reading pattern (top to bottom, left to right), ensuring users encounter information in a logical sequence.
+
+### Color Scheme
+The color palette was deliberately chosen for both aesthetic appeal and functional clarity:
+
+Structural Elements: Black text for headings and organizational elements
+Data Categories:
+
+Cases: Light blue for backgrounds and blue for lines
+Deaths: Red for both text and visualization elements
+Recoveries: Purple for timeline visualization
+
+
+Geographical Heatmap: Blue outlines for continents with red gradient (light to dark) for case intensity
+Wave Selection: Purple for Wave 1, blue for subsequent waves
+
+This color scheme maintains consistency across the dashboard, helping users quickly identify related information while ensuring accessibility for users with color vision deficiencies.
+
+### Typography
+The dashboard uses a clear typographic hierarchy through handwritten text:
+
+Headers: Larger black text for main titles and section headings
+Details and Labels: Medium-sized blue text for axes labels, legends, and continental names
+Data Values: Varied colors based on data category for numerical information
+
+The consistent typography creates visual harmony while the size hierarchy establishes information importance, guiding the viewer's attention appropriately.
+
+### Strategic Element Placement
+Elements were placed strategically to optimize information flow:
+
+Most important visualizations (Epicurve and Geographical Map) are placed prominently
+Related controls (date range and wave selectors) are positioned near the visualizations they affect
+Adequate white space separates sections to prevent visual clutter
+Key metrics are highlighted at the top for immediate insight
+
+This thoughtful placement ensures users can easily navigate the dashboard and find relevant information without confusion.
+
+## 4. Audience Consideration
+The dashboard was designed with a public audience in mind, prioritizing accessibility, understandability, and actionability.
+
+### Accessibility Features
+To ensure the dashboard is accessible to all users:
+
+Plain Language: Technical terminology is minimized, with clear titles and labels
+Color Accessibility: The color scheme works for users with color vision deficiencies by using distinctive colors (black, blue, red, purple) with sufficient contrast
+Clear Labels: All visualizations have explicit labels and legends
+Visual Hierarchy: Information is organized from most to least important
+Simplified Layout: The clean, three-section design prevents information overload
+
+These features ensure that the information is accessible to users regardless of technical background or visual capabilities.
+
+### Enhancing Understandability
+To make complex epidemiological data understandable to the general public:
+
+Key Takeaways: The top banner provides immediate summary statistics
+Contextual Information: Wave selectors and date range provide temporal context
+Visual Storytelling: The Epicurve timeline shows the pandemic's progression in an intuitive format
+Simplified Views: Complex data is distilled to essential patterns
+Familiar Formats: Standard visualization types (line graphs, maps, tables) require minimal learning
+
+These approaches help users comprehend complicated pandemic data without specialized knowledge.
+
+### Promoting Actionability
+The dashboard is designed to support informed decision-making:
+
+Current Status Indicators: Clear visualization of present situation through the latest data points
+Trend Indicators: The Epicurve timeline shows whether situations are improving or worsening
+Comparative Context: The map and table allow users to understand their local situation in global context
+Focused Information: Presents only the most relevant data for public awareness
+Multi-level Detail: Provides both overview (total statistics) and specifics (country-level data)
+
+By making the information actionable, the dashboard helps the public make informed decisions about their health and safety during the pandemic.
+
+##Conclusion
+The handcrafted COVID-19 dashboard design presented in this report offers a balanced approach to visualizing complex pandemic data for a public audience. By focusing on key visualizations—the Epicurve Timeline, Geographical Spread Heatmap, and Detailed Data Table—the dashboard communicates essential information about pandemic progression across multiple waves.
+The design emphasizes clarity, accessibility, and actionability through thoughtful layout, consistent color schemes (black for structure, blue for details, red for deaths, and purple for highlighting), and clear typography. The proposed data augmentation strategies would allow the dashboard to evolve beyond the first wave data to capture the full pandemic trajectory, providing valuable insights into how COVID-19 has changed over time.
+This dashboard design serves as a template that could be implemented digitally or adapted for other public health communication needs, demonstrating how thoughtful visualization can make complex epidemiological data accessible to general audiences.
+
+## References
+
+Johns Hopkins University CSSE COVID-19 Data Repository. (2022). COVID-19 Data Repository by the Center for Systems Science and Engineering (CSSE) at Johns Hopkins University. https://github.com/CSSEGISandData/COVID-19
+Our World in Data. (2022). Coronavirus Pandemic (COVID-19). https://ourworldindata.org/coronavirus
+World Health Organization. (2022). WHO Coronavirus (COVID-19) Dashboard. https://covid19.who.int/
+Centers for Disease Control and Prevention. (2022). COVID Data Tracker. https://covid.cdc.gov/covid-data-tracker/
+GISAID Initiative. (2022). Global Initiative on Sharing All Influenza Data. https://www.gisaid.org/

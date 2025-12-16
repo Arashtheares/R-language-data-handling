@@ -1,0 +1,765 @@
+---
+title: "Final Assignment Part 2"
+author: "Arash Heidarzadeh Naeini u3236906"
+date: "2025-05-06"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+# 1. Dataset Justification
+
+## Source URL
+The car datasets used in this analysis were obtained from Kaggle, specifically from the collection of car price datasets available at:
+https://www.kaggle.com/datasets/nehalbirla/vehicle-dataset-from-cardekho
+
+## Dataset Description
+The dataset consists of four related CSV files containing information about used cars in the Indian market, primarily from the CarDekho platform:
+
+1. `car details v4.csv` - Contains detailed car specifications (2059 rows, 20 columns)
+2. `car data.csv` - Includes basic car information with pricing (301 rows, 9 columns)
+3. `CAR DETAILS FROM CAR DEKHO.csv` - Features car details from the Car Dekho platform (4340 rows, 8 columns)
+4. `Car details v3.csv` - Provides extended car details (8128 rows, 13 columns)
+
+These datasets collectively contain comprehensive information about various car attributes including make, model, year, price, mileage, engine specifications, and more.
+
+## Justification for Dataset Selection
+This dataset was selected for several compelling reasons:
+
+1. **Practical Relevance**: The used car market represents a significant sector with direct real-world applications where predictive models can provide tangible value.
+
+2. **Multiple Related Files**: The dataset meets the requirement of having multiple related CSV files that can be joined to create a more comprehensive analysis.
+
+3. **Diverse Features**: The collection contains a rich variety of numerical, categorical, and textual features that allow for sophisticated modeling techniques.
+
+4. **Predictive Potential**: The various car attributes (age, mileage, specifications) provide strong potential predictors for car prices, making it well-suited for regression analysis.
+
+5. **Data Quality**: The datasets contain a substantial number of records with a good balance of features, allowing for robust model development and validation.
+
+6. **Business Value**: Predicting car prices accurately has significant economic value for various stakeholders including dealers, insurance companies, and individual buyers/sellers.
+
+# 2. Implementation Overview
+
+## Loading Required Libraries
+
+```{r load_libraries}
+# Function to install and load packages if not already installed
+install_and_load <- function(packages) {
+  for (package in packages) {
+    if (!require(package, character.only = TRUE, quietly = TRUE)) {
+      message(paste("Installing package:", package))
+      install.packages(package, dependencies = TRUE, repos = "https://cran.rstudio.com/")
+      if (!require(package, character.only = TRUE, quietly = TRUE)) {
+        warning(paste("Package", package, "couldn't be installed. Some functionality may be limited."))
+      }
+    } else {
+      message(paste("Package", package, "is already loaded"))
+    }
+  }
+}
+
+# Define necessary packages
+packages <- c(
+  "tidyverse",    # For data manipulation and visualization
+  "readr",        # For reading CSV files
+  "dplyr",        # For data manipulation
+  "tidyr",        # For data tidying
+  "ggplot2",      # For data visualization
+  "caret",        # For machine learning functions
+  "corrplot",     # For correlation visualization
+  "car",          # For VIF calculation
+  "knitr",        # For nicer table outputs
+  "kableExtra"    # For enhancing table appearance
+)
+
+# Install and load all packages
+install_and_load(packages)
+```
+
+## Importing Data
+
+```{r import_data}
+# Import all datasets
+car_details_v4 <- read_csv("car details v4.csv")
+car_data <- read_csv("car data.csv")
+car_dekho <- read_csv("CAR DETAILS FROM CAR DEKHO.csv")
+car_details_v3 <- read_csv("Car details v3.csv")
+
+# Check dimensions of each dataset
+cat("Dimensions of car_details_v4:", dim(car_details_v4), "\n")
+cat("Dimensions of car_data:", dim(car_data), "\n")
+cat("Dimensions of car_dekho:", dim(car_dekho), "\n") 
+cat("Dimensions of car_details_v3:", dim(car_details_v3), "\n")
+
+# Display the first few rows of the first dataset as a sample
+head(car_details_v4, 2) %>% 
+  kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), font_size = 10) %>%
+  scroll_box(width = "100%")
+```
+
+## Data Wrangling and Merging
+
+The data wrangling process includes standardizing column names across datasets, cleaning and transforming variables, and merging the datasets to create a comprehensive dataset for analysis.
+
+```{r data_wrangling}
+# Standardize and clean car_details_v4
+car_details_v4_clean <- car_details_v4 %>%
+  rename(
+    make = Make,
+    model = Model,
+    price = Price,
+    year = Year,
+    km_driven = Kilometer,
+    fuel_type = `Fuel Type`,
+    transmission = Transmission,
+    location = Location,
+    color = Color,
+    owner = Owner,
+    seller_type = `Seller Type`,
+    engine_cc = Engine,
+    max_power = `Max Power`,
+    max_torque = `Max Torque`
+  ) %>%
+  # Extract numeric values and create derived features
+  mutate(
+    engine_size = as.numeric(str_extract(engine_cc, "\\d+")),
+    car_age = 2025 - year,
+    power_value = as.numeric(str_extract(max_power, "\\d+\\.?\\d*")),
+    price = as.numeric(price),
+    km_driven = as.numeric(km_driven),
+    source = "car_details_v4",
+    # Create a full name field for potential matching
+    full_name = paste(make, model)
+  )
+
+# Standardize and clean car_data
+car_data_clean <- car_data %>%
+  rename(
+    model = Car_Name,
+    year = Year,
+    price = Selling_Price,
+    market_price = Present_Price,
+    km_driven = Kms_Driven,
+    fuel_type = Fuel_Type,
+    seller_type = Seller_Type,
+    transmission = Transmission,
+    owner_num = Owner
+  ) %>%
+  mutate(
+    car_age = 2025 - year,
+    # Convert price to same scale (assuming car_data prices are in lakhs)
+    price = price * 100000,  # Convert lakhs to INR
+    market_price = market_price * 100000,  # Convert lakhs to INR
+    source = "car_data",
+    # Create make field based on first word of model
+    make = word(model, 1),
+    # Create a full name field for potential matching
+    full_name = model,
+    # Standardize owner to match other datasets
+    owner = case_when(
+      owner_num == 0 ~ "First Owner",
+      owner_num == 1 ~ "Second Owner",
+      owner_num == 3 ~ "Third Owner",
+      TRUE ~ paste(owner_num + 1, "Owner")
+    )
+  ) %>%
+  select(-owner_num)  # Remove redundant column
+
+# Standardize and clean car_dekho
+car_dekho_clean <- car_dekho %>%
+  rename(
+    full_name = name,
+    year = year,
+    price = selling_price,
+    km_driven = km_driven,
+    fuel_type = fuel,
+    seller_type = seller_type,
+    transmission = transmission,
+    owner = owner
+  ) %>%
+  mutate(
+    price = as.numeric(price),
+    km_driven = as.numeric(km_driven),
+    car_age = 2025 - year,
+    source = "car_dekho",
+    # Extract make/model from name where possible
+    make = word(full_name, 1),
+    model = word(full_name, 2, -1)
+  )
+
+# Standardize and clean car_details_v3
+car_details_v3_clean <- car_details_v3 %>%
+  rename(
+    full_name = name,
+    year = year,
+    price = selling_price,
+    km_driven = km_driven,
+    fuel_type = fuel,
+    seller_type = seller_type,
+    transmission = transmission,
+    owner = owner
+  ) %>%
+  # Extract numeric values and create derived features
+  mutate(
+    engine_size = as.numeric(str_extract(engine, "\\d+")),
+    mileage_value = as.numeric(str_extract(mileage, "\\d+\\.?\\d*")),
+    car_age = 2025 - as.numeric(year),
+    power_value = as.numeric(str_extract(max_power, "\\d+\\.?\\d*")),
+    price = as.numeric(price),
+    km_driven = as.numeric(km_driven),
+    source = "car_details_v3",
+    # Extract make/model from name where possible
+    make = word(full_name, 1),
+    model = word(full_name, 2, -1)
+  )
+
+# Select common important columns for each dataset
+common_columns <- c("make", "model", "full_name", "year", "price", "km_driven", 
+                   "fuel_type", "transmission", "owner", "seller_type", 
+                   "car_age", "source")
+
+# Create a base combined dataset with common columns
+car_details_v4_base <- car_details_v4_clean %>% select(all_of(common_columns))
+car_data_base <- car_data_clean %>% select(all_of(common_columns))
+car_dekho_base <- car_dekho_clean %>% select(all_of(common_columns))
+car_details_v3_base <- car_details_v3_clean %>% select(all_of(common_columns))
+
+# Combine all datasets
+combined_cars <- bind_rows(
+  car_details_v4_base,
+  car_data_base,
+  car_dekho_base,
+  car_details_v3_base
+)
+
+# Create a single additional features dataframe with all supplementary data
+additional_features <- bind_rows(
+  # From car_details_v4
+  car_details_v4_clean %>%
+    select(full_name, year, engine_size, power_value, source) %>%
+    mutate(dataset = "v4"),
+  
+  # From car_data
+  car_data_clean %>%
+    select(full_name, year, market_price, source) %>%
+    mutate(dataset = "car_data"),
+  
+  # From car_details_v3
+  car_details_v3_clean %>%
+    select(full_name, year, engine_size, power_value, 
+           mileage = mileage_value, seats, source) %>%
+    mutate(dataset = "v3")
+)
+
+# Create a function to get the first non-NA value for each group
+first_non_na <- function(x) {
+  non_na <- x[!is.na(x)]
+  if(length(non_na) > 0) return(non_na[1])
+  return(NA)
+}
+
+# Aggregate additional features by taking first non-NA value for each car
+aggregated_features <- additional_features %>%
+  group_by(full_name, year) %>%
+  summarize(
+    engine_size = first_non_na(engine_size),
+    power_value = first_non_na(power_value),
+    mileage = first_non_na(mileage),
+    seats = first_non_na(seats),
+    market_price = first_non_na(market_price),
+    .groups = 'drop'
+  )
+
+# Join the aggregated features to the combined dataset
+complete_cars <- left_join(combined_cars, aggregated_features, by = c("full_name", "year"))
+
+# Clean up categorical variables and standardize
+complete_cars <- complete_cars %>%
+  mutate(
+    fuel_type = as.factor(fuel_type),
+    transmission = as.factor(transmission),
+    owner = as.factor(owner),
+    seller_type = as.factor(seller_type),
+    brand = make
+  )
+
+# Print stats about the consolidated dataset
+cat("Number of rows in consolidated dataset:", nrow(complete_cars), "\n")
+cat("Number of columns in consolidated dataset:", ncol(complete_cars), "\n")
+
+# Remove duplicates
+unique_cars <- complete_cars %>%
+  distinct(full_name, year, price, .keep_all = TRUE)
+
+cat("Number of rows after removing duplicates:", nrow(unique_cars), "\n")
+
+# Handle missing values for key features
+cleaned_cars <- unique_cars %>%
+  # Only keep rows with valid price and km_driven
+  filter(!is.na(price) & price > 0) %>%
+  filter(!is.na(km_driven) & km_driven > 0) 
+
+# Handle missing values using group medians
+# First for engine size
+cleaned_cars <- cleaned_cars %>%
+  group_by(make) %>%
+  mutate(engine_size = ifelse(is.na(engine_size), 
+                            median(engine_size, na.rm = TRUE), 
+                            engine_size)) %>%
+  ungroup()
+
+# Then for power value
+cleaned_cars <- cleaned_cars %>%
+  group_by(make) %>%
+  mutate(power_value = ifelse(is.na(power_value), 
+                             median(power_value, na.rm = TRUE), 
+                             power_value)) %>%
+  ungroup()
+
+# Calculate bounds for outlier removal
+# For price
+Q1_price <- quantile(cleaned_cars$price, 0.25, na.rm = TRUE)
+Q3_price <- quantile(cleaned_cars$price, 0.75, na.rm = TRUE)
+IQR_price <- Q3_price - Q1_price
+lower_bound_price <- Q1_price - 1.5 * IQR_price
+upper_bound_price <- Q3_price + 1.5 * IQR_price
+
+# For km_driven
+Q1_km <- quantile(cleaned_cars$km_driven, 0.25, na.rm = TRUE)
+Q3_km <- quantile(cleaned_cars$km_driven, 0.75, na.rm = TRUE)
+IQR_km <- Q3_km - Q1_km
+lower_bound_km <- Q1_km - 1.5 * IQR_km
+upper_bound_km <- Q3_km + 1.5 * IQR_km
+
+# Apply outlier removal
+final_cars <- cleaned_cars %>%
+  filter(price >= lower_bound_price & price <= upper_bound_price) %>%
+  filter(km_driven >= lower_bound_km & km_driven <= upper_bound_km)
+
+cat("Original cleaned data rows:", nrow(cleaned_cars), "\n")
+cat("After outlier removal:", nrow(final_cars), "\n")
+cat("Removed", nrow(cleaned_cars) - nrow(final_cars), "outliers\n")
+
+# Finalize the dataset by selecting the most important columns
+complete_cars <- final_cars %>%
+  select(
+    brand, model, full_name, year, price, km_driven, fuel_type, transmission,
+    owner, seller_type, car_age, engine_size, power_value, 
+    mileage, seats, source
+  )
+
+# Get summary of final dataset
+summary(complete_cars)
+```
+
+## Exploratory Data Analysis
+
+In this section, we'll explore the key relationships in our data through targeted visualizations that focus on understanding the factors that influence car prices.
+
+### Price Distribution Analysis
+
+```{r price_distribution}
+# Price distribution
+p_price_dist <- ggplot(complete_cars, aes(x = price)) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+  labs(title = "Distribution of Car Prices",
+       x = "Price (INR)",
+       y = "Count") +
+  theme_minimal()
+
+# Log transformation of price for better visualization
+p_log_price <- ggplot(complete_cars, aes(x = log10(price))) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+  labs(title = "Distribution of Log10 Car Prices",
+       x = "Log10(Price)",
+       y = "Count") +
+  theme_minimal()
+
+# Display plots
+p_price_dist
+p_log_price
+```
+
+**Interpretation:** The price distribution is heavily right-skewed, with a large number of cars in the lower price ranges and fewer in the higher price ranges. This is typical of used car markets where most vehicles are in the affordable range. The log transformation provides a more normal distribution, suggesting that a log transformation of the price variable may be appropriate for our regression modeling.
+
+### Car Age and Price Relationship
+
+```{r age_price_relationship}
+# Process data for visualization
+avg_price_by_age <- complete_cars %>%
+  group_by(car_age) %>%
+  summarise(
+    avg_price = mean(price, na.rm = TRUE),
+    count = n(),
+    .groups = "drop"
+  ) %>%
+  filter(count >= 10)  # Only include ages with sufficient data
+
+# Line plot with average price by car age
+ggplot(avg_price_by_age, aes(x = car_age, y = avg_price)) +
+  geom_line(color = "darkred", linewidth = 1) +
+  geom_point(color = "steelblue", size = 2) +
+  labs(title = "Average Price by Car Age",
+       x = "Car Age (Years)",
+       y = "Average Price (INR)") +
+  theme_minimal()
+```
+
+**Interpretation:** There is a clear negative relationship between car age and price. Newer cars command significantly higher prices, with a rapid initial depreciation in the first few years followed by a more gradual decline as vehicles age. This pattern is consistent with the well-known depreciation curve in the automotive industry.
+
+### Brand Analysis
+
+```{r brand_analysis}
+# Brand statistics
+brand_stats <- complete_cars %>%
+  group_by(brand) %>%
+  summarise(
+    count = n(),
+    avg_price = mean(price, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(count))
+
+# Top brands by average price
+top_brands_by_price <- brand_stats %>%
+  filter(count >= 10) %>%
+  arrange(desc(avg_price)) %>%
+  head(10)
+
+ggplot(top_brands_by_price, aes(x = reorder(brand, avg_price), y = avg_price)) +
+  geom_bar(stat = "identity", fill = "darkred") +
+  coord_flip() +
+  labs(title = "Top 10 Brands by Average Price",
+       x = "Brand",
+       y = "Average Price (INR)") +
+  theme_minimal()
+```
+
+**Interpretation:** There is significant variation in average prices across car brands. Luxury brands like Mercedes-Benz, BMW, and Audi command the highest average prices, which is expected given their market positioning. This suggests that brand is likely to be an important predictor in our model.
+
+### Effect of Categorical Variables on Price
+
+```{r categorical_analysis}
+# Function to create boxplot of price by categorical variable
+create_boxplot <- function(data, cat_var, title, x_label) {
+  # Convert string to symbol for proper evaluation
+  var_sym <- sym(cat_var)
+  
+  ggplot(data, aes(x = !!var_sym, y = price, fill = !!var_sym)) +
+    geom_boxplot() +
+    labs(title = title,
+         x = x_label,
+         y = "Price (INR)") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "none")
+}
+
+# Create boxplots for transmission and fuel type
+create_boxplot(complete_cars, "transmission", "Price by Transmission", "Transmission")
+create_boxplot(complete_cars, "fuel_type", "Price by Fuel Type", "Fuel Type")
+```
+
+**Interpretation:** 
+- **Transmission:** Automatic transmission vehicles generally have higher prices compared to manual transmission vehicles. This reflects consumer preferences and the typically higher initial cost of automatic transmissions.
+- **Fuel Type:** There are noticeable price differences across fuel types. Diesel vehicles often command higher prices than petrol vehicles, possibly due to their better fuel efficiency and longer engine life, despite higher maintenance costs.
+
+### Correlation Analysis
+
+```{r correlation_analysis}
+# Select numeric variables for correlation analysis
+numeric_vars <- complete_cars %>%
+  select(price, year, km_driven, car_age, engine_size, power_value) %>%
+  drop_na()
+
+# Calculate correlation matrix
+correlation_matrix <- cor(numeric_vars, use = "complete.obs")
+
+# Display correlation matrix as a heatmap
+corrplot(correlation_matrix, method = "color", type = "upper", 
+         tl.col = "black", tl.srt = 45, 
+         title = "Correlation Matrix of Numeric Variables",
+         addCoef.col = "black", number.cex = 0.7)
+
+# Print correlation with price
+cor_with_price <- correlation_matrix[1, ]
+print("Correlation with price:")
+print(sort(cor_with_price, decreasing = TRUE))
+```
+
+**Interpretation:** The correlation analysis reveals several important relationships:
+- There is a strong positive correlation between price and year (and a corresponding negative correlation with car age).
+- Engine size and power value show moderate positive correlations with price.
+- Kilometers driven has a moderate negative correlation with price.
+- These correlations align with our intuitive understanding of car valuation factors and suggest these variables will be useful in our predictive model.
+
+## Predictive Modeling
+
+Now we'll build multiple regression models to predict car prices based on the features we've analyzed.
+
+```{r predictive_modeling}
+# Prepare data for modeling
+set.seed(123) # For reproducibility
+
+# Create log price variable for better model fit
+complete_cars$log_price <- log10(complete_cars$price)
+
+# Select features for modeling
+model_df <- complete_cars %>%
+  # Select necessary columns
+  select(log_price, price, car_age, km_driven, fuel_type, transmission, 
+         brand, engine_size, power_value) %>%
+  # Remove rows with NA in key variables
+  filter(!is.na(engine_size) & !is.na(power_value) & 
+           !is.na(car_age) & !is.na(km_driven)) %>%
+  # Ensure categorical variables are factors
+  mutate(
+    fuel_type = as.factor(fuel_type),
+    transmission = as.factor(transmission),
+    brand = as.factor(brand)
+  )
+
+# Handle brand variable - group less frequent brands
+brand_counts <- table(model_df$brand)
+significant_brands <- names(brand_counts[brand_counts >= 30])
+
+model_df <- model_df %>%
+  mutate(brand_grouped = ifelse(brand %in% significant_brands, 
+                               as.character(brand), "Other")) %>%
+  mutate(brand_grouped = as.factor(brand_grouped))
+
+# Split data into training and test sets
+train_index <- sample(1:nrow(model_df), 
+                      size = round(0.8 * nrow(model_df)))
+train_data <- model_df[train_index, ]
+test_data <- model_df[-train_index, ]
+
+cat("Training set rows:", nrow(train_data), "\n")
+cat("Test set rows:", nrow(test_data), "\n")
+
+# Build three models of increasing complexity
+# Basic model
+lm_model_basic <- lm(log_price ~ car_age + km_driven + fuel_type, 
+                    data = train_data)
+cat("Basic model summary:\n")
+print(summary(lm_model_basic))
+
+# Enhanced model
+lm_model_enhanced <- lm(log_price ~ car_age + km_driven + fuel_type + 
+                      engine_size + power_value, 
+                      data = train_data)
+cat("Enhanced model summary:\n")
+print(summary(lm_model_enhanced))
+
+# Full model with brand
+lm_model_full <- lm(log_price ~ car_age + km_driven + fuel_type + 
+                   engine_size + power_value + brand_grouped, 
+                   data = train_data)
+cat("Full model summary:\n")
+print(summary(lm_model_full))
+
+# Make predictions on test data
+predictions_basic <- predict(lm_model_basic, newdata = test_data)
+predictions_enhanced <- predict(lm_model_enhanced, newdata = test_data)
+predictions_full <- predict(lm_model_full, newdata = test_data)
+
+# Convert predictions back to original scale
+predictions_basic_original <- 10^predictions_basic
+predictions_enhanced_original <- 10^predictions_enhanced
+predictions_full_original <- 10^predictions_full
+
+# Compare model performance
+cat("RMSE Basic:", 
+    sqrt(mean((test_data$price - predictions_basic_original)^2)), "\n")
+cat("RMSE Enhanced:", 
+    sqrt(mean((test_data$price - predictions_enhanced_original)^2)), "\n")
+cat("RMSE Full:", 
+    sqrt(mean((test_data$price - predictions_full_original)^2)), "\n")
+
+# Extract and display feature importance
+model_coefs <- coef(lm_model_full)[-1]  # Exclude intercept
+feature_importance <- data.frame(
+  Variable = names(model_coefs),
+  Coefficient = model_coefs,
+  Abs_Coefficient = abs(model_coefs),
+  stringsAsFactors = FALSE
+)
+
+# Display top 5 most influential factors
+cat("Top 5 most influential factors:\n")
+top_features <- feature_importance %>%
+  arrange(desc(Abs_Coefficient)) %>%
+  head(5)
+
+print(top_features)
+```
+
+## Cross-Validation
+
+To validate our model's performance and ensure it generalizes well to new data, we'll perform cross-validation.
+
+```{r cross_validation}
+# Set up 10-fold cross-validation
+set.seed(456)
+train_control <- trainControl(method = "cv", number = 10)
+
+# Prepare formula for the full model
+formula_full <- as.formula("log_price ~ car_age + km_driven + fuel_type + transmission + engine_size + power_value + brand_grouped")
+
+# Train model with cross-validation
+cv_model <- train(
+  formula_full,
+  data = train_data,
+  method = "lm",
+  trControl = train_control
+)
+
+# Print cross-validation results
+cat("Cross-validation results for full model:\n")
+print(cv_model)
+
+# Prepare formula for the enhanced model
+formula_enhanced <- as.formula("log_price ~ car_age + km_driven + fuel_type + transmission + engine_size + power_value")
+
+# Train enhanced model with cross-validation
+cv_model_enhanced <- train(
+  formula_enhanced,
+  data = train_data,
+  method = "lm",
+  trControl = train_control
+)
+
+# Compare CV results of both models
+cv_comparison <- data.frame(
+  Model = c("Enhanced", "Full"),
+  RMSE = c(mean(cv_model_enhanced$resample$RMSE), mean(cv_model$resample$RMSE)),
+  Rsquared = c(mean(cv_model_enhanced$resample$Rsquared), mean(cv_model$resample$Rsquared))
+)
+
+cat("Model comparison:\n")
+print(cv_comparison)
+```
+
+## Model Application: Price Prediction Function
+
+Now we'll create a function that uses our model to predict car prices based on input parameters.
+
+```{r prediction_function}
+# Function to predict car price based on user inputs
+predict_car_price <- function(
+  year, 
+  km_driven, 
+  fuel_type, 
+  transmission, 
+  engine_size, 
+  power_value, 
+  brand
+) {
+  # Calculate car age
+  car_age <- 2025 - year
+  
+  # Create a dataframe with the input values
+  new_car <- data.frame(
+    car_age = car_age,
+    km_driven = km_driven,
+    fuel_type = fuel_type,
+    transmission = transmission,
+    engine_size = engine_size,
+    power_value = power_value,
+    brand = brand
+  )
+  
+  # Check if brand is in significant brands, otherwise set to "Other"
+  new_car$brand_grouped <- ifelse(as.character(new_car$brand) %in% significant_brands, 
+                                as.character(new_car$brand), "Other")
+  
+  # Convert categorical variables to factors
+  new_car$fuel_type <- as.factor(new_car$fuel_type)
+  new_car$transmission <- as.factor(new_car$transmission)
+  new_car$brand_grouped <- as.factor(new_car$brand_grouped)
+  
+  # Predict the log price using the final model
+  log_predicted_price <- predict(lm_model_full, newdata = new_car)
+  
+  # Convert the log price back to the original scale
+  predicted_price <- 10^log_predicted_price
+  
+  return(predicted_price)
+}
+
+# Demonstrate the prediction function with example cars
+# Example 1: A relatively new mid-range car
+example_price_1 <- predict_car_price(
+  year = 2018,
+  km_driven = 45000,
+  fuel_type = "Petrol",
+  transmission = "Manual",
+  engine_size = 1200,
+  power_value = 82,
+  brand = "Hyundai"
+)
+
+# Example 2: An older car with more kilometers
+example_price_2 <- predict_car_price(
+  year = 2012,
+  km_driven = 120000,
+  fuel_type = "Diesel",
+  transmission = "Manual",
+  engine_size = 1500,
+  power_value = 90,
+  brand = "Maruti"
+)
+
+# Example 3: A newer luxury car
+example_price_3 <- predict_car_price(
+  year = 2022,
+  km_driven = 15000,
+  fuel_type = "Petrol",
+  transmission = "Automatic",
+  engine_size = 2000,
+  power_value = 180,
+  brand = "BMW"
+)
+
+# Compare predictions
+prediction_examples <- data.frame(
+  Example = c("Example 1 (2018 Hyundai)", "Example 2 (2012 Maruti Diesel)", "Example 3 (2022 BMW)"),
+  Predicted_Price = c(example_price_1, example_price_2, example_price_3)
+)
+
+# Format the predicted prices for display
+prediction_examples$Formatted_Price <- sapply(prediction_examples$Predicted_Price, 
+                                           function(x) paste0("₹", format(round(x), big.mark=",")))
+
+# Display comparison table
+prediction_examples %>%
+  select(Example, Formatted_Price) %>%
+  kable(col.names = c("Car Description", "Predicted Price")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+# 3. Results and Conclusions
+
+Our analysis of used car data from multiple datasets has yielded valuable insights and a robust predictive model for car prices.
+
+## Key Findings
+
+1. **Car Age**: The most significant predictor of price, with newer cars commanding substantially higher prices. The relationship follows a non-linear depreciation curve.
+
+2. **Brand Value**: Premium brands maintain significantly higher resale values even after controlling for other factors.
+
+3. **Engine Power and Size**: Both show strong positive correlations with price, reflecting consumer preferences for performance.
+
+4. **Transmission Type**: Automatic transmission vehicles typically command a premium over manual transmission vehicles.
+
+5. **Fuel Type**: Diesel vehicles generally maintain higher resale values
+
+
+
+

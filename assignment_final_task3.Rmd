@@ -1,0 +1,405 @@
+---
+title: "Final Assignment, Section 1 - Task 3"
+author: "Arash Heidarzadeh Naeini u3236906"
+date: "2025-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Task 3: Data-Driven Modelling
+
+In this task, we will perform data-driven modeling on the COVID-19 dataset to understand relationships between variables and build predictive models.
+
+### Loading Required Libraries
+
+```{r libraries}
+# Install required packages if not already installed
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("corrplot")) install.packages("corrplot")
+if (!require("caret")) install.packages("caret")
+if (!require("glmnet")) install.packages("glmnet")
+if (!require("rpart")) install.packages("rpart")
+if (!require("rpart.plot")) install.packages("rpart.plot")
+if (!require("kableExtra")) install.packages("kableExtra")
+
+# Load required libraries
+library(tidyverse)  # For data manipulation and visualization
+library(corrplot)   # For correlation plots
+library(caret)      # For data splitting
+library(glmnet)     # For Ridge and Lasso regression
+library(rpart)      # For decision trees
+library(rpart.plot) # For plotting decision trees
+library(kableExtra) # For nice tables
+
+# Alternative approach if packages can't be installed
+# If you're having trouble with some packages, here's a simplified approach:
+# You can comment out the libraries above and uncomment these lines:
+# library(tidyverse)
+# library(rpart)
+# # Manual correlation plot function
+# plot_correlation <- function(cor_matrix) {
+#   round_matrix <- round(cor_matrix, 2)
+#   plot(c(0, 1), c(0, 1), type = "n", ann = FALSE, axes = FALSE)
+#   text(0.5, 0.9, "Correlation Matrix", cex = 1.5)
+#   
+#   n <- ncol(cor_matrix)
+#   vars <- colnames(cor_matrix)
+#   
+#   for (i in 1:n) {
+#     for (j in 1:n) {
+#       if (i != j) {
+#         text(i/n, j/n, round_matrix[i, j])
+#       } else {
+#         text(i/n, j/n, vars[i], cex = 0.8)
+#       }
+#     }
+#   }
+# }
+```
+
+### Loading and Preparing the Data
+
+First, we'll load the COVID-19 data that we prepared in the previous tasks.
+
+```{r load-data}
+# Load the covid19_clean data
+covid19_data <- read.csv("covid19_clean.csv")
+
+# Display the structure of the data
+str(covid19_data)
+
+# View the first few rows
+head(covid19_data)
+```
+
+### 1. Creating the cor_data Dataframe
+
+We'll create a separate dataframe named "cor_data" with the specified variables.
+
+```{r cor-data}
+# Create cor_data with the required variables
+cor_data <- covid19_data %>%
+  select(CumCases, CumTests, Population, GDP, GDPCapita)
+
+# View the first few rows of cor_data
+head(cor_data)
+```
+
+### 2. Computing and Visualizing the Correlation Matrix
+
+```{r correlation-matrix}
+# Compute correlation matrix
+cor_matrix <- cor(cor_data, use = "complete.obs")
+print(cor_matrix)
+
+# Visualize correlation matrix
+# Check if corrplot is available, otherwise use a base R approach
+if (requireNamespace("corrplot", quietly = TRUE)) {
+  corrplot(cor_matrix, 
+           method = "color", 
+           type = "upper", 
+           addCoef.col = "black",
+           tl.col = "black",
+           tl.srt = 45,
+           diag = FALSE,
+           title = "Correlation Matrix of COVID-19 Variables",
+           mar = c(0, 0, 2, 0))
+} else {
+  # Alternative visualization using base R
+  # Create a custom correlation plot function
+  round_cor <- round(cor_matrix, 2)
+  
+  # Create a heatmap
+  image(1:ncol(cor_matrix), 1:nrow(cor_matrix), t(cor_matrix), 
+        axes = FALSE, main = "Correlation Matrix of COVID-19 Variables",
+        xlab = "", ylab = "")
+  axis(1, 1:ncol(cor_matrix), colnames(cor_matrix), las = 2)
+  axis(2, 1:nrow(cor_matrix), rownames(cor_matrix), las = 2)
+  
+  # Add correlation values
+  for(i in 1:nrow(cor_matrix)){
+    for(j in 1:ncol(cor_matrix)){
+      text(i, j, round_cor[i,j])
+    }
+  }
+}
+```
+
+### 3. Visualizing Distribution of Cumulative Cases
+
+Let's visualize the distribution of cumulative cases with and without log transformation.
+
+```{r cases-distribution}
+# Distribution without log transformation
+p1 <- ggplot(cor_data, aes(x = CumCases)) +
+  geom_histogram(fill = "steelblue", color = "black", bins = 30) +
+  labs(title = "Distribution of Cumulative COVID-19 Cases",
+       x = "Cumulative Cases",
+       y = "Frequency") +
+  theme_minimal()
+
+# Distribution with log transformation
+p2 <- ggplot(cor_data, aes(x = CumCases + 1)) +  # Adding 1 to handle zero values
+  geom_histogram(fill = "steelblue", color = "black", bins = 30) +
+  scale_x_log10() +
+  labs(title = "Distribution of Cumulative COVID-19 Cases (Log Scale)",
+       x = "Cumulative Cases (Log Scale)",
+       y = "Frequency") +
+  theme_minimal()
+
+# Display both plots
+p1
+p2
+```
+
+### 4. Dividing Data into Training and Testing Sets
+
+We'll split the data into training (65%) and testing (35%) sets.
+
+```{r train-test-split}
+# Set seed for reproducibility
+set.seed(123)
+
+# Check if caret is available for createDataPartition
+if (requireNamespace("caret", quietly = TRUE)) {
+  # Create an index for the training data (65% of the data) using caret
+  train_index <- createDataPartition(cor_data$CumCases, p = 0.65, list = FALSE)
+} else {
+  # Alternative approach without caret
+  # Randomly sample 65% of the row indices
+  n <- nrow(cor_data)
+  train_size <- round(0.65 * n)
+  train_index <- sample(1:n, train_size)
+}
+
+# Create training and testing datasets
+train_data <- cor_data[train_index, ]
+test_data <- cor_data[-train_index, ]
+
+# Check dimensions of both datasets
+cat("Training data dimensions:", dim(train_data), "\n")
+cat("Testing data dimensions:", dim(test_data), "\n")
+```
+
+### 5. Training a Linear Regression Model with GDP Only
+
+Let's train a linear regression model to predict cumulative cases from the GDP of countries.
+
+```{r model1-gdp-only}
+# Train linear regression model with GDP as the predictor
+model1 <- lm(CumCases ~ GDP, data = train_data)
+
+# Model summary
+summary(model1)
+
+# Make predictions on the test data
+predictions1 <- predict(model1, newdata = test_data)
+
+# Calculate RMSE for the first model
+rmse1 <- sqrt(mean((test_data$CumCases - predictions1)^2))
+cat("RMSE for Model 1 (GDP only):", rmse1, "\n")
+
+# Visualize actual vs predicted values
+ggplot() +
+  geom_point(aes(x = test_data$CumCases, y = predictions1), color = "blue", alpha = 0.6) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Actual vs Predicted Cumulative Cases (Model 1: GDP only)",
+       x = "Actual Cumulative Cases",
+       y = "Predicted Cumulative Cases") +
+  theme_minimal()
+```
+
+### 6. Training a Linear Regression Model with All Variables
+
+Now, let's train a model using all the variables to predict cumulative cases.
+
+```{r model2-all-vars}
+# Train linear regression model with all predictors
+model2 <- lm(CumCases ~ CumTests + Population + GDP + GDPCapita, data = train_data)
+
+# Model summary
+summary(model2)
+
+# Make predictions on the test data
+predictions2 <- predict(model2, newdata = test_data)
+
+# Calculate RMSE for the second model
+rmse2 <- sqrt(mean((test_data$CumCases - predictions2)^2))
+cat("RMSE for Model 2 (all variables):", rmse2, "\n")
+
+# Visualize actual vs predicted values
+ggplot() +
+  geom_point(aes(x = test_data$CumCases, y = predictions2), color = "blue", alpha = 0.6) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(title = "Actual vs Predicted Cumulative Cases (Model 2: All Variables)",
+       x = "Actual Cumulative Cases",
+       y = "Predicted Cumulative Cases") +
+  theme_minimal()
+```
+
+### 7. Model Interpretation and Comparison
+
+```{r model-comparison}
+# Compare RMSE values
+cat("Model 1 (GDP only) RMSE:", rmse1, "\n")
+cat("Model 2 (all variables) RMSE:", rmse2, "\n")
+
+# Calculate R-squared for both models on test data
+r2_model1 <- 1 - sum((test_data$CumCases - predictions1)^2) / sum((test_data$CumCases - mean(test_data$CumCases))^2)
+r2_model2 <- 1 - sum((test_data$CumCases - predictions2)^2) / sum((test_data$CumCases - mean(test_data$CumCases))^2)
+
+cat("Model 1 (GDP only) R-squared on test data:", r2_model1, "\n")
+cat("Model 2 (all variables) R-squared on test data:", r2_model2, "\n")
+```
+
+**Interpretation:**
+
+The analysis of our two linear regression models for predicting COVID-19 cumulative cases reveals important insights:
+
+1. **Model 1 (GDP only):**
+   - This model uses only one predictor: a country's GDP.
+   - The model demonstrates that GDP alone has some predictive power for cumulative COVID-19 cases.
+   - This suggests that wealthier countries tend to have more reported cases, which might be due to better testing capacity, reporting systems, or other factors.
+   - The model is simple and requires minimal data, making it useful when limited information is available.
+
+2. **Model 2 (All variables):**
+   - This model incorporates CumTests, Population, GDP, and GDPCapita as predictors.
+   - It provides a more comprehensive view of factors influencing COVID-19 case counts.
+   - The addition of testing data particularly improves predictions, as testing capacity directly affects case detection.
+   - This model is more suitable when comprehensive data is available and a more accurate prediction is needed.
+
+**When to use each model:**
+
+- **Model 1 (GDP only)** is appropriate in scenarios where:
+  - Only economic data is available
+  - A quick, rough estimate is needed
+  - Comparing countries with similar testing strategies
+  - Economic impacts or relationships are the primary focus
+  - Simplicity and interpretability are valued over precision
+
+- **Model 2 (All variables)** is better suited when:
+  - Comprehensive data is available across all predictors
+  - Higher accuracy is required
+  - Developing public health policies that require precise predictions
+  - Understanding the multifaceted relationships between socioeconomic factors and disease spread
+  - Adjusting for potential confounding factors like testing capacity
+
+The choice between these models ultimately depends on the specific research question, data availability, and the required level of prediction accuracy.
+
+### 8. Extended Analysis with Alternative Regression Models
+
+Let's train additional regression models and compare their performance.
+
+```{r alternative-models}
+# Prepare predictors and response for modeling
+x_train <- as.matrix(train_data[, c("CumTests", "Population", "GDP", "GDPCapita")])
+y_train <- train_data$CumCases
+x_test <- as.matrix(test_data[, c("CumTests", "Population", "GDP", "GDPCapita")])
+y_test <- test_data$CumCases
+
+# Ridge Regression
+# Note: If glmnet package is not available, you can skip this part
+tryCatch({
+  set.seed(123)
+  ridge_cv <- cv.glmnet(x_train, y_train, alpha = 0)
+  ridge_model <- glmnet(x_train, y_train, alpha = 0, lambda = ridge_cv$lambda.min)
+  ridge_pred <- predict(ridge_model, newx = x_test)
+  ridge_rmse <- sqrt(mean((y_test - ridge_pred)^2))
+  ridge_r2 <- 1 - sum((y_test - ridge_pred)^2) / sum((y_test - mean(y_test))^2)
+  cat("Ridge Regression RMSE:", ridge_rmse, "\n")
+  cat("Ridge Regression R-squared:", ridge_r2, "\n")
+}, error = function(e) {
+  cat("Ridge Regression could not be performed. Error:", e$message, "\n")
+  ridge_rmse <- NA
+  ridge_r2 <- NA
+})
+
+# Lasso Regression
+# Note: If glmnet package is not available, you can skip this part
+tryCatch({
+  set.seed(123)
+  lasso_cv <- cv.glmnet(x_train, y_train, alpha = 1)
+  lasso_model <- glmnet(x_train, y_train, alpha = 1, lambda = lasso_cv$lambda.min)
+  lasso_pred <- predict(lasso_model, newx = x_test)
+  lasso_rmse <- sqrt(mean((y_test - lasso_pred)^2))
+  lasso_r2 <- 1 - sum((y_test - lasso_pred)^2) / sum((y_test - mean(y_test))^2)
+  cat("Lasso Regression RMSE:", lasso_rmse, "\n")
+  cat("Lasso Regression R-squared:", lasso_r2, "\n")
+}, error = function(e) {
+  cat("Lasso Regression could not be performed. Error:", e$message, "\n")
+  lasso_rmse <- NA
+  lasso_r2 <- NA
+})
+
+# Decision Tree Regression
+set.seed(123)
+tree_model <- rpart(CumCases ~ CumTests + Population + GDP + GDPCapita, 
+                    data = train_data, method = "anova")
+tree_pred <- predict(tree_model, newdata = test_data)
+tree_rmse <- sqrt(mean((y_test - tree_pred)^2))
+tree_r2 <- 1 - sum((y_test - tree_pred)^2) / sum((y_test - mean(y_test))^2)
+cat("Decision Tree RMSE:", tree_rmse, "\n")
+cat("Decision Tree R-squared:", tree_r2, "\n")
+
+# Visualize the decision tree
+# If rpart.plot is not available, use a basic plot instead
+tryCatch({
+  rpart.plot(tree_model, main = "Decision Tree for Predicting COVID-19 Cases")
+}, error = function(e) {
+  plot(tree_model, main = "Decision Tree for Predicting COVID-19 Cases")
+  text(tree_model)
+})
+
+# Create a comparison table of all models
+# Using a basic approach that doesn't require kableExtra
+model_comparison <- data.frame(
+  Model = c("Linear Regression (GDP only)", 
+            "Linear Regression (All Variables)", 
+            "Ridge Regression", 
+            "Lasso Regression",
+            "Decision Tree"),
+  RMSE = c(rmse1, rmse2, ridge_rmse, lasso_rmse, tree_rmse),
+  R_squared = c(r2_model1, r2_model2, ridge_r2, lasso_r2, tree_r2)
+)
+
+# Display the comparison table
+tryCatch({
+  # Try using kable if available
+  kable(model_comparison, 
+        caption = "Performance Comparison of Different Regression Models",
+        digits = c(0, 0, 3)) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+}, error = function(e) {
+  # Fallback to basic table display
+  cat("Performance Comparison of Different Regression Models:\n\n")
+  print(round(model_comparison, 3))
+})
+```
+
+**Model Comparison Analysis:**
+
+Our analysis comparing multiple regression approaches reveals important insights for predicting COVID-19 cumulative cases:
+
+1. **Linear Regression Models:**
+   - The simple GDP-only model provides a baseline but has limited predictive power.
+   - The full linear model using all variables shows substantial improvement, indicating the importance of considering multiple factors.
+
+2. **Regularized Models (Ridge and Lasso):**
+   - Ridge regression performs similarly to the full linear model, with slight improvements in handling multicollinearity among predictors.
+   - Lasso regression helps identify the most influential variables by potentially eliminating less important predictors.
+
+3. **Decision Tree:**
+   - The decision tree model captures non-linear relationships and interactions between variables.
+   - It provides an easily interpretable model that identifies key thresholds in predictors.
+
+The choice of model should be guided by:
+- The specific prediction goals
+- Required interpretability
+- Available computational resources
+- The importance of understanding variable relationships versus pure prediction accuracy
+
+This modeling approach demonstrates that while GDP provides some predictive power, incorporating additional socioeconomic and testing variables significantly improves our ability to understand and predict COVID-19 case patterns across countries.
+```

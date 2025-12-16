@@ -1,0 +1,320 @@
+---
+title: "assignment_final_task1.Rmd"
+author: "Arash Heidarzadeh Naeini u3236906"
+date: "2025-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1.	import the data from the CSV files and store them into dataframes named appropriately. 
+
+```{r}
+covid19_df <- read.csv("Covid19.csv", stringsAsFactors = FALSE)
+
+# Import the tests dataframe
+tests_df <- read.csv("Tests.csv", stringsAsFactors = FALSE)
+
+# Import the countries dataframe
+countries_df <- read.csv("Countries.csv", stringsAsFactors = FALSE)
+
+# Import the recovered dataframe
+recovered_df <- read.csv("Recovered.csv", stringsAsFactors = FALSE)
+
+# Display the structure of each dataframe
+str(covid19_df)
+str(tests_df)
+str(countries_df)
+head(colnames(recovered_df), 10) # Show just a few columns for recovered_df since it has many
+```
+
+## 2.	Tidy up the dataframe driven from the “Recovered.csv” files to be compatible with the dataframe driven from the “Covid19.csv” file, _i.e._, every observation should have a record of recovered patients in one country in a single day. 
+
+
+
+```{r tidy_recovered}
+# Load required packages
+library(tidyverse)
+
+# The recovered dataframe is in wide format with dates as columns
+# We need to transform it to long format with a date column
+
+# Create a copy to work with
+recovered_wide <- recovered_df
+
+# Get column names
+date_cols <- names(recovered_wide)[-1]  # All columns except the first
+country_col <- names(recovered_wide)[1]  # First column (Country.Region)
+
+# Create an empty dataframe to store results
+recovered_long <- data.frame(
+  Country = character(),
+  Date = character(),
+  Recovered = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Process each country one by one
+for (i in 1:nrow(recovered_wide)) {
+  # Get country name
+  current_country <- as.character(recovered_wide[i, country_col])
+  
+  # Process each date column for this country
+  for (date_col in date_cols) {
+    # Get recovery count
+    recovery_count <- recovered_wide[i, date_col]
+    if (is.na(recovery_count)) recovery_count <- 0
+    
+    # Format date from "2020.01.22" to "2020-01-22"
+    formatted_date <- gsub("\\.", "-", date_col)
+    
+    # Add to results dataframe
+    recovered_long <- rbind(recovered_long, 
+                           data.frame(
+                             Country = current_country,
+                             Date = formatted_date,
+                             Recovered = recovery_count,
+                             stringsAsFactors = FALSE
+                           ))
+  }
+  
+  # Print progress for large datasets
+  if (i %% 20 == 0) {
+    cat("Processed", i, "countries out of", nrow(recovered_wide), "\n")
+  }
+}
+
+# Check if dataframe is created successfully
+cat("Recovered_long dataframe created with", nrow(recovered_long), "rows and", 
+    ncol(recovered_long), "columns\n")
+
+# Use print() instead of head() for displaying results
+print(recovered_long[1:6, ])
+```
+
+## 3.	Change the column names in the dataframes were loaded from the following files accordingly.
+
+```{r rename_columns}
+# Rename columns in covid19_df
+library(dplyr)
+covid19_df <- covid19_df %>%
+  rename(
+    Code = iso_code,
+    Country = location,
+    Continent = continent,
+    Date = date,
+    NewCases = new_cases,
+    NewDeaths = new_deaths
+  )
+
+# Rename columns in tests_df
+tests_df <- tests_df %>%
+  rename(
+    Code = Country.Code,
+    Date = Date,
+    NewTests = New.Tests
+  )
+
+# Rename columns in countries_df
+countries_df <- countries_df %>%
+  rename(
+    Code = countryCode,
+    Country = Country,
+    Population = popData2018,
+    GDP = GDP,
+    GDPCapita = GDP.capita
+  )
+
+# Display the renamed dataframes
+head(covid19_df)
+head(tests_df)
+head(countries_df)
+```
+## 4.	Ensure that all dates variables are of the same date format across all dataframes. 
+
+```{r standardize_dates}
+# First check the format of the date columns in each dataframe
+cat("Covid19_df date format:", class(covid19_df$Date), "\n")
+cat("Sample covid19 dates:", head(covid19_df$Date), "\n")
+
+cat("Tests_df date format:", class(tests_df$Date), "\n")
+cat("Sample tests dates:", head(tests_df$Date), "\n")
+
+cat("Recovered_long date format:", class(recovered_long$Date), "\n")
+cat("Sample recovered dates:", head(recovered_long$Date), "\n")
+
+# Now convert dates with appropriate format specification
+# For covid19_df - likely already in YYYY-MM-DD format
+covid19_df$Date <- as.Date(covid19_df$Date)
+
+# For tests_df - likely already in YYYY-MM-DD format
+tests_df$Date <- as.Date(tests_df$Date)
+
+# For recovered_long - format may need explicit specification
+# First check if dates have the 'X' prefix that sometimes appears
+if(grepl("^X", recovered_long$Date[1])) {
+  # Remove the X prefix and convert format
+  recovered_long$Date <- as.Date(gsub("^X", "", recovered_long$Date), format="%Y.%m.%d")
+} else if(grepl("^\\d{4}\\.\\d{2}\\.\\d{2}$", recovered_long$Date[1])) {
+  # If format is like "2020.01.22"
+  recovered_long$Date <- as.Date(recovered_long$Date, format="%Y.%m.%d")
+} else if(grepl("^\\d{4}-\\d{2}-\\d{2}$", recovered_long$Date[1])) {
+  # If format is already like "2020-01-22"
+  recovered_long$Date <- as.Date(recovered_long$Date)
+} else {
+  # If format is unexpected, print sample for debugging
+  cat("Unexpected date format in recovered_long:", head(recovered_long$Date), "\n")
+  # Try a generic approach
+  recovered_long$Date <- as.character(recovered_long$Date)
+}
+
+# Check the date formats after conversion
+cat("After conversion:\n")
+cat("Covid19_df date format:", class(covid19_df$Date[1]), "\n")
+cat("Tests_df date format:", class(tests_df$Date[1]), "\n")
+cat("Recovered_long date format:", class(recovered_long$Date[1]), "\n")
+```
+## 5.	Considering the master dataframe is the one loaded from the “Covid19.csv” file, add new 5 variables to it from the other files (Recovered.csv, Tests.csv, Countries.csv). The 5 new added variables should be named (“Recovered”, “NewTests”, “Population”, “GDP”, “GDPCapita”) accordingly.
+
+```{r merge_dataframes}
+# First, we'll merge the covid19_df with the recovered_long dataframe
+# We need to join on both Country and Date
+master_df <- covid19_df %>%
+  left_join(recovered_long, by = c("Country", "Date"))
+
+# Now merge with tests_df (joining on Code and Date)
+master_df <- master_df %>%
+  left_join(tests_df, by = c("Code", "Date"))
+
+# Finally, merge with countries_df (joining on Code)
+master_df <- master_df %>%
+  left_join(countries_df, by = c("Code"))
+
+# We need to handle the duplicate columns from the joins
+master_df <- master_df %>%
+  select(Code, Country = Country.x, Continent, Date, NewCases, NewDeaths, 
+         Recovered, NewTests, Population, GDP, GDPCapita)
+
+# Display the merged dataframe
+head(master_df)
+```
+## 6.	Check NAs in the merged dataframe and change them to `Zero`. 
+
+```{r handle_nas}
+# Check for NAs in each column
+na_counts <- sapply(master_df, function(x) sum(is.na(x)))
+print(na_counts)
+
+# Replace NAs with zeros
+master_df <- master_df %>%
+  mutate(
+    NewCases = ifelse(is.na(NewCases), 0, NewCases),
+    NewDeaths = ifelse(is.na(NewDeaths), 0, NewDeaths),
+    Recovered = ifelse(is.na(Recovered), 0, Recovered),
+    NewTests = ifelse(is.na(NewTests), 0, NewTests),
+    Population = ifelse(is.na(Population), 0, Population),
+    GDP = ifelse(is.na(GDP), 0, GDP),
+    GDPCapita = ifelse(is.na(GDPCapita), 0, GDPCapita)
+  )
+
+# Verify NAs have been replaced
+na_counts_after <- sapply(master_df, function(x) sum(is.na(x)))
+print(na_counts_after)
+```
+
+## 7.	Using existing “Date” variable; add month and week variables to the master dataframe. 
+
+
+```{r add_time_variables}
+# Add month and week using lubridate
+library(lubridate)
+
+master_df <- master_df %>%
+  mutate(
+    Month = month(Date),
+    Week = week(Date)
+  )
+
+# Display the dataframe with new time variables
+head(master_df)
+```
+## 8. Add four new variables to the master dataframe (“CumCases”, “CumDeaths”, “CumRecovered”, “CumTests”). These variables should reflect the cumulative relevant data up to the date of the observation; _i.e._, CumCases for country “X” at Date “Y” should reflect the total number of cases in country “X” since the beginning of recording data till the date “Y”. 
+
+
+```{r add_cumulative_vars}
+# We need to calculate cumulative values for each country over time
+# Group by country and calculate cumulative sums
+
+master_df <- master_df %>%
+  arrange(Country, Date) %>%
+  group_by(Country) %>%
+  mutate(
+    CumCases = cumsum(NewCases),
+    CumDeaths = cumsum(NewDeaths),
+    CumRecovered = cumsum(Recovered),
+    CumTests = cumsum(NewTests)
+  ) %>%
+  ungroup()
+
+# Display the dataframe with new cumulative variables
+head(master_df %>% filter(CumCases > 0))
+```
+## 9. Add two new variables to the master dataframe (“Active”, “FatalityRate”). Active variable should reflect the infected cases that has not been closed yet (by either recovery or death), and it could be calculated from (CumCases – (CumDeaths + CumRecovered)). On the other hand, FatalityRate variable should reflect the percentages of death to the infected cases up to date and it could be calculated from (CumDeaths / CumCases). 
+
+
+```{r add_active_and_fatality}
+# Calculate Active cases and Fatality Rate
+master_df <- master_df %>%
+  mutate(
+    Active = CumCases - (CumDeaths + CumRecovered),
+    FatalityRate = ifelse(CumCases > 0, (CumDeaths / CumCases) * 100, 0)
+  )
+
+# Display the dataframe with new variables
+head(master_df %>% filter(Active > 0))
+```
+
+
+## 10. Add four new variables to the master dataframe (“Cases_1M_Pop”, “Deaths_1M_Pop”, “Recovered_1M_Pop”, “Tests_1M_Pop”) These variables should reflect the cumulative relevant rate per one million of the corresponding country population, (i.e Cases_1M_Pop for country “X” at Date “Y” should reflect the total number of new cases up to date “Y” per million people of country “X” population)
+
+```{r add_per_million_vars}
+# Calculate metrics per 1M population
+master_df <- master_df %>%
+  mutate(
+    Cases_1M_Pop = ifelse(Population > 0, (CumCases * 1000000) / Population, 0),
+    Deaths_1M_Pop = ifelse(Population > 0, (CumDeaths * 1000000) / Population, 0),
+    Recovered_1M_Pop = ifelse(Population > 0, (CumRecovered * 1000000) / Population, 0),
+    Tests_1M_Pop = ifelse(Population > 0, (CumTests * 1000000) / Population, 0)
+  )
+
+# Display the final dataframe with all required variables
+head(master_df %>% filter(Cases_1M_Pop > 0))
+```
+### Final verification and summary
+
+```{r verify_data}
+# Verify the structure of the final dataframe
+str(master_df)
+
+# Summary statistics
+summary(master_df %>% select(NewCases, CumCases, Active, FatalityRate, Cases_1M_Pop))
+
+# Count total countries
+num_countries <- length(unique(master_df$Country))
+cat("Total number of countries:", num_countries, "\n")
+
+# Count observations by continent
+master_df %>%
+  group_by(Continent) %>%
+  summarize(Count = n()) %>%
+  arrange(desc(Count))
+```
+
+## Write the final dataframe to a CSV file
+
+```{r write_csv}
+# Save the final clean dataframe
+write.csv(master_df, "covid19_clean.csv", row.names = FALSE)
+```
